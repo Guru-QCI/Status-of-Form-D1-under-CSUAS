@@ -1,7 +1,21 @@
-import { Stage } from '@prisma/client'
+import { AppStatus, Stage } from '@prisma/client'
+
+// Stage ordering used by both TAT logic and Detail.tsx status labels.
+export const STAGE_ORDER: Stage[] = [
+  Stage.APPLICATION_REVIEW,
+  Stage.STAGE_1,
+  Stage.STAGE_2,
+  Stage.TECHNICAL_REVIEW_SOC,
+  Stage.DGCA_REVIEW,
+  Stage.TC_ISSUED,
+  Stage.QCI_AGREEMENT,
+  Stage.POST_TC_SURVEILLANCE,
+]
 
 // Minimal fields needed by getTotalTat (used by both detail and registry).
 export type TotalTatInput = {
+  status: AppStatus
+  currentStage: Stage
   submissionDate: Date
   reviewDecisionDate: Date | null
   stage1ClosureDate: Date | null
@@ -66,8 +80,11 @@ export function getStageTat(app: AppTatInput, stage: Stage): StageTatResult {
   if (!start) return { elapsed: null, isComplete: false }
 
   const isComplete = end !== null
-  const elapsed    = getDaysBetween(start, end ?? new Date())
-  return { elapsed, isComplete }
+  const raw        = getDaysBetween(start, end ?? new Date())
+  // Negative means start/end are in wrong order — surface as null so the UI
+  // can show a warning rather than a negative day count.
+  if (raw !== null && raw < 0) return { elapsed: null, isComplete }
+  return { elapsed: raw, isComplete }
 }
 
 const END_DATE_KEYS: (keyof TotalTatInput)[] = [
@@ -85,7 +102,8 @@ export function getTotalTat(app: TotalTatInput): { elapsed: number; isComplete: 
     .filter((d): d is Date => d !== null)
     .reduce<Date | null>((latest, d) => (!latest || d > latest ? d : latest), null)
 
-  const isComplete = app.tcIssuedDate !== null || app.qciAgreementCompletedDate !== null
+  const isComplete = app.status === AppStatus.TC_ISSUED ||
+    app.currentStage === Stage.POST_TC_SURVEILLANCE
   const elapsed    = Math.max(0, getDaysBetween(app.submissionDate, latestEnd ?? new Date()) ?? 0)
 
   return { elapsed, isComplete }

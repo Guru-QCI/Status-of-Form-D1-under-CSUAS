@@ -68,6 +68,8 @@ export default async function AnalyticsPage() {
     prisma.application.findMany({
       where: { deletedAt: null },
       select: {
+        status:                   true,
+        currentStage:             true,
         submissionDate:           true,
         reviewDecisionDate:       true,
         stage1ScheduleFrom:       true,

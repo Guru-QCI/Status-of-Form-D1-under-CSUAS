@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Stage } from '@prisma/client'
+import { AppStatus, Stage } from '@prisma/client'
 import {
   getDaysBetween,
   getStageTat,
@@ -11,6 +11,8 @@ import {
 const D = (s: string) => new Date(s)
 
 const BASE: AppTatInput = {
+  status:                    AppStatus.IN_PROGRESS,
+  currentStage:              Stage.APPLICATION_REVIEW,
   submissionDate:            D('2026-01-01'),
   reviewDecisionDate:        null,
   stage1ScheduleFrom:        null,
@@ -152,6 +154,8 @@ describe('getStageTat — unmeasured stage', () => {
 
 describe('getTotalTat', () => {
   const BASE_TOTAL: TotalTatInput = {
+    status:                    AppStatus.IN_PROGRESS,
+    currentStage:              Stage.APPLICATION_REVIEW,
     submissionDate:            D('2026-01-01'),
     reviewDecisionDate:        null,
     stage1ClosureDate:         null,
@@ -161,23 +165,24 @@ describe('getTotalTat', () => {
     qciAgreementCompletedDate: null,
   }
 
-  it('is not complete when no end dates are set', () => {
+  it('is not complete when status is IN_PROGRESS', () => {
     const r = getTotalTat(BASE_TOTAL)
     expect(r.isComplete).toBe(false)
     expect(r.elapsed).toBeGreaterThanOrEqual(0)
   })
 
-  it('is complete when tcIssuedDate is set', () => {
-    expect(getTotalTat({ ...BASE_TOTAL, tcIssuedDate: D('2026-03-01') }).isComplete).toBe(true)
+  it('is complete when status is TC_ISSUED', () => {
+    expect(getTotalTat({ ...BASE_TOTAL, status: AppStatus.TC_ISSUED }).isComplete).toBe(true)
   })
 
-  it('is complete when qciAgreementCompletedDate is set', () => {
-    expect(getTotalTat({ ...BASE_TOTAL, qciAgreementCompletedDate: D('2026-04-01') }).isComplete).toBe(true)
+  it('is complete when currentStage is POST_TC_SURVEILLANCE', () => {
+    expect(getTotalTat({ ...BASE_TOTAL, currentStage: Stage.POST_TC_SURVEILLANCE }).isComplete).toBe(true)
   })
 
   it('uses the latest end date for elapsed — tcIssuedDate (59 days)', () => {
     const r = getTotalTat({
       ...BASE_TOTAL,
+      status:             AppStatus.TC_ISSUED,
       reviewDecisionDate: D('2026-01-20'),
       stage1ClosureDate:  D('2026-02-10'),
       tcIssuedDate:       D('2026-03-01'),
@@ -190,6 +195,8 @@ describe('getTotalTat', () => {
   it('prefers qciAgreementCompletedDate over tcIssuedDate when later', () => {
     const r = getTotalTat({
       ...BASE_TOTAL,
+      status:                    AppStatus.TC_ISSUED,
+      currentStage:              Stage.POST_TC_SURVEILLANCE,
       tcIssuedDate:              D('2026-03-01'),
       qciAgreementCompletedDate: D('2026-04-01'),
     })

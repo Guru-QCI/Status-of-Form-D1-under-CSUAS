@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useRef } from 'react'
 import { Stage, AppStatus, DocType, ReminderKind, ReviewDecision, RejectionCategory, QciAgreementStatus } from '@prisma/client'
+import { STAGE_ORDER } from '@/lib/tat'
 import {
   getDocumentSignedUrl,
   advanceStage,
@@ -1063,29 +1064,45 @@ export default function Detail({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {tatSummary.stages.map(({ stage, elapsed, isComplete }) => (
-                <tr key={stage} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-2.5 text-slate-700">{STAGE_LABELS[stage]}</td>
-                  <td className="px-4 py-2.5 text-right font-mono text-slate-800">
-                    {stage === Stage.TC_ISSUED
-                      ? (a.tcIssuedDate ? formatDate(a.tcIssuedDate) : '—')
-                      : (elapsed !== null ? elapsed : '—')}
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-xs">
-                    {stage === Stage.TC_ISSUED ? (
-                      isComplete
-                        ? <span className="text-green-600">Issued</span>
-                        : <span className="text-slate-400">Not yet issued</span>
-                    ) : elapsed === null ? (
-                      <span className="text-slate-400">Not started</span>
-                    ) : isComplete ? (
-                      <span className="text-green-600">Complete</span>
-                    ) : (
-                      <span className="text-blue-600">In progress</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {tatSummary.stages.map(({ stage, elapsed, isComplete }) => {
+                const stageIdx   = STAGE_ORDER.indexOf(stage)
+                const currentIdx = STAGE_ORDER.indexOf(a.currentStage)
+                const isPast     = stageIdx < currentIdx
+                const isCurrent  = stageIdx === currentIdx
+
+                let statusCell: React.ReactNode
+                if (stage === Stage.TC_ISSUED) {
+                  // Milestone row — show issue date, not duration
+                  statusCell = isComplete
+                    ? <span className="text-green-600">Issued</span>
+                    : <span className="text-slate-400">Not yet issued</span>
+                } else if (elapsed === null && isComplete) {
+                  // End date set but start/end order is wrong — data entry error
+                  statusCell = <span className="text-amber-600">Date sequence invalid</span>
+                } else if (isCurrent) {
+                  statusCell = <span className="text-blue-600">In progress</span>
+                } else if (isPast) {
+                  statusCell = elapsed !== null
+                    ? <span className="text-green-600">Complete</span>
+                    : <span className="text-slate-400">No data</span>
+                } else {
+                  statusCell = <span className="text-slate-400">Not started</span>
+                }
+
+                return (
+                  <tr key={stage} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-2.5 text-slate-700">{STAGE_LABELS[stage]}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-800">
+                      {stage === Stage.TC_ISSUED
+                        ? (a.tcIssuedDate ? formatDate(a.tcIssuedDate) : '—')
+                        : (elapsed !== null ? elapsed : '—')}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-xs">
+                      {statusCell}
+                    </td>
+                  </tr>
+                )
+              })}
               <tr className="bg-slate-50 font-medium">
                 <td className="px-4 py-2.5 text-slate-800">Total elapsed</td>
                 <td className="px-4 py-2.5 text-right font-mono text-slate-800">
