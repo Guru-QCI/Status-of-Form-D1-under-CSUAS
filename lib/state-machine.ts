@@ -14,6 +14,7 @@ export type EventType =
   | 'DGCA_REVIEW_STARTED'
   | 'QCI_AGREEMENT_UPDATED'
   | 'RESPONSE_RECORDED'
+  | 'TC_CERTIFICATE_UPLOADED'
 
 export type AppStateInput = {
   cbId: string
@@ -97,7 +98,8 @@ export function getBlockingReason(
       return null
 
     case Stage.TC_ISSUED:
-      if (user.role !== 'ADMIN') return 'Only admins can issue a Type Certificate.'
+      if (user.role !== 'CB_USER' && user.role !== 'ADMIN') return 'Only CB users or admins can mark TC as issued.'
+      if (user.role === 'CB_USER' && user.cbId !== app.cbId) return 'You can only advance applications for your own CB.'
       if (openNcCount > 0)       return openNcMsg(openNcCount)
       return null
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Stage, AppStatus, DocType, ReminderKind, ReviewDecision, RejectionCategory, QciAgreementStatus } from '@prisma/client'
 import {
   getDocumentSignedUrl,
@@ -19,6 +19,7 @@ import {
   saveSoC,
   saveDgcaReview,
   saveQciAgreement,
+  uploadTcCertificate,
 } from './actions'
 
 type DocumentRow = {
@@ -97,6 +98,7 @@ type ApplicationDetail = {
   // DGCA
   dgcaReviewStartedAt: string | null
   tcIssuedDate: string | null
+  tcDocumentPath: string | null
   // QCI Agreement
   qciAgreementStatus: QciAgreementStatus
   qciAgreementInitiatedDate: string | null
@@ -124,6 +126,7 @@ type Props = {
   tatSummary: TatSummary
   surveillances: SurveillanceRow[]
   reminders: ReminderRow[]
+  tcCertificateUrl: string | null
 }
 
 const STAGE_LABELS: Record<Stage, string> = {
@@ -216,6 +219,7 @@ export default function Detail({
   tatSummary,
   surveillances,
   reminders,
+  tcCertificateUrl,
 }: Props) {
   const router = useRouter()
 
@@ -299,6 +303,28 @@ export default function Detail({
   const [savingQci,     setSavingQci]     = useState(false)
   const [qciError,      setQciError]      = useState('')
   const [qciOk,         setQciOk]         = useState('')
+
+  // ── TC Certificate upload ──
+  const tcFileRef   = useRef<HTMLInputElement>(null)
+  const [tcUploading, setTcUploading] = useState(false)
+  const [tcUploadError, setTcUploadError] = useState('')
+
+  async function handleUploadTc(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setTcUploading(true)
+    setTcUploadError('')
+    const fd = new FormData()
+    fd.set('file', file)
+    try {
+      const result = await uploadTcCertificate(a.id, fd)
+      if ('error' in result) setTcUploadError(result.error)
+      else router.refresh()
+    } finally {
+      setTcUploading(false)
+      if (tcFileRef.current) tcFileRef.current.value = ''
+    }
+  }
 
   async function handleAdvanceStage() {
     setAdvancing(true)
@@ -558,7 +584,11 @@ export default function Detail({
                              px-4 py-1.5 hover:bg-slate-700 disabled:opacity-50
                              transition-colors"
                 >
-                  {advancing ? 'Advancing…' : `Advance to ${STAGE_LABELS[nextStage]}`}
+                  {advancing
+                    ? 'Advancing…'
+                    : a.currentStage === Stage.DGCA_REVIEW
+                      ? 'Mark TC Issued by DGCA'
+                      : `Advance to ${STAGE_LABELS[nextStage]}`}
                 </button>
               </div>
             ) : (
@@ -921,6 +951,72 @@ export default function Detail({
                 {qciError && <span className="text-sm text-red-600">{qciError}</span>}
               </div>
             </form>
+          </div>
+        </section>
+      )}
+
+      {/* TC Certificate */}
+      {(a.currentStage === Stage.TC_ISSUED ||
+        a.currentStage === Stage.QCI_AGREEMENT ||
+        a.currentStage === Stage.POST_TC_SURVEILLANCE) && (
+        <section className="mb-8">
+          <SectionHeading>Type Certificate</SectionHeading>
+          <div className="bg-white rounded-lg border border-slate-200 p-4">
+            {tcCertificateUrl ? (
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <a
+                  href={tcCertificateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:underline break-all"
+                >
+                  View TC Certificate (PDF)
+                </a>
+                {canEditCbStages && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => tcFileRef.current?.click()}
+                      disabled={tcUploading}
+                      className="text-xs border border-slate-300 rounded px-2.5 py-1
+                                 text-slate-600 hover:border-slate-400 hover:text-slate-800
+                                 disabled:opacity-50 transition-colors"
+                    >
+                      {tcUploading ? 'Uploading…' : 'Replace Certificate'}
+                    </button>
+                    {tcUploadError && (
+                      <span className="text-xs text-red-600">{tcUploadError}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 flex-wrap">
+                <p className="text-sm text-slate-500">No TC certificate uploaded yet.</p>
+                {canEditCbStages && (
+                  <>
+                    <button
+                      onClick={() => tcFileRef.current?.click()}
+                      disabled={tcUploading}
+                      className="text-sm border border-slate-300 rounded px-3 py-1.5
+                                 text-slate-600 hover:border-slate-400 hover:text-slate-800
+                                 disabled:opacity-50 transition-colors"
+                    >
+                      {tcUploading ? 'Uploading…' : 'Upload TC Certificate (PDF)'}
+                    </button>
+                    {tcUploadError && (
+                      <span className="text-sm text-red-600">{tcUploadError}</span>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            <input
+              ref={tcFileRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={handleUploadTc}
+            />
           </div>
         </section>
       )}

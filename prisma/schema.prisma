@@ -161,6 +161,7 @@ model Application {
   // Process 5 — DGCA
   dgcaReviewStartedAt DateTime?
   tcIssuedDate        DateTime?
+  tcDocumentPath      String?
 
   // Process 6 — QCI–Manufacturer Agreement
   qciAgreementStatus        QciAgreementStatus @default(NOT_STARTED)
@@ -200,6 +201,7 @@ model Document {
   type          DocType
   fileName      String
   storagePath   String
+  storageBucket String      @default("documents")
   uploadedById  String
   uploadedAt    DateTime    @default(now())
 }

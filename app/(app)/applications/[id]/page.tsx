@@ -5,6 +5,7 @@ import { Stage } from '@prisma/client'
 import { nextStageFor, getBlockingReason } from '@/lib/state-machine'
 import { getStageTat, getTotalTat } from '@/lib/tat'
 import { computeReminders } from '@/lib/reminders'
+import { getTcCertificatePublicUrl } from '@/lib/storage'
 import Detail from './Detail'
 
 const TAT_STAGES = [
@@ -55,6 +56,7 @@ export default async function ApplicationDetailPage({
       socSubmittedDate:           true,
       dgcaReviewStartedAt:        true,
       tcIssuedDate:               true,
+      tcDocumentPath:             true,
       qciAgreementStatus:         true,
       qciAgreementInitiatedDate:  true,
       qciAgreementDraftSentDate:  true,
@@ -113,6 +115,10 @@ export default async function ApplicationDetailPage({
         { role: user.role, cbId: user.cbId ?? null },
         application._count.ncs,
       )
+    : null
+
+  const tcCertificateUrl = application.tcDocumentPath
+    ? getTcCertificatePublicUrl(application.tcDocumentPath)
     : null
 
   const tatSummary = {
@@ -181,6 +187,7 @@ export default async function ApplicationDetailPage({
       }}
       isAdmin={user.role === 'ADMIN'}
       userCbId={user.cbId ?? null}
+      tcCertificateUrl={tcCertificateUrl}
       cbIsNabcbAccredited={application.cb.isNabcbAccredited}
       openNcCount={application._count.ncs}
       nextStage={nextStage}

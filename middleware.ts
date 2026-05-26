@@ -10,7 +10,7 @@
 import { refreshSession } from '@/lib/supabase/middleware'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/register', '/api/auth/callback', '/api/cron']
+const PUBLIC_PATHS = ['/login', '/register', '/api/auth/callback', '/api/cron', '/certificates']
 
 export async function middleware(request: NextRequest) {
   // refreshSession() calls supabase.auth.getUser() (not getSession) and returns

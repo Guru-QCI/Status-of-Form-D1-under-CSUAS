@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { generateSignedUrl } from '@/lib/storage'
+import { generateSignedUrl, uploadTcFile, getTcCertificatePublicUrl, TC_CERTIFICATES_BUCKET } from '@/lib/storage'
 import { Stage, QciAgreementStatus, ReviewDecision, RejectionCategory, AppStatus } from '@prisma/client'
 import { nextStageFor, getBlockingReason } from '@/lib/state-machine'
 import type { EventType } from '@/lib/state-machine'
@@ -18,8 +18,9 @@ export async function getDocumentSignedUrl(
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
     select: {
-      storagePath: true,
-      application: { select: { cbId: true } },
+      storagePath:   true,
+      storageBucket: true,
+      application:   { select: { cbId: true } },
     },
   })
 
@@ -29,7 +30,11 @@ export async function getDocumentSignedUrl(
     return { error: 'Forbidden.' }
   }
 
-  return generateSignedUrl(doc.storagePath, 60)
+  if (doc.storageBucket === TC_CERTIFICATES_BUCKET) {
+    return { url: getTcCertificatePublicUrl(doc.storagePath) }
+  }
+
+  return generateSignedUrl(doc.storagePath, 60, doc.storageBucket)
 }
 
 // ─── advanceStage ─────────────────────────────────────────────────────────────
@@ -725,4 +730,56 @@ export async function saveQciAgreement(
 
   revalidatePath(`/applications/${applicationId}`)
   return { success: true }
+}
+
+// ─── uploadTcCertificate ──────────────────────────────────────────────────────
+
+export async function uploadTcCertificate(
+  applicationId: string,
+  formData: FormData,
+): Promise<{ url: string } | { error: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { error: 'Unauthenticated.' }
+  if (user.role !== 'ADMIN' && user.role !== 'CB_USER') return { error: 'Forbidden.' }
+
+  const file = formData.get('file') as File | null
+  if (!file || file.size === 0) return { error: 'No file provided.' }
+  if (file.type !== 'application/pdf') return { error: 'Only PDF files are accepted.' }
+
+  const app = await prisma.application.findUnique({
+    where:  { id: applicationId },
+    select: { cbId: true, currentStage: true },
+  })
+  if (!app) return { error: 'Application not found.' }
+  if (
+    app.currentStage !== Stage.TC_ISSUED &&
+    app.currentStage !== Stage.QCI_AGREEMENT &&
+    app.currentStage !== Stage.POST_TC_SURVEILLANCE
+  ) {
+    return { error: 'TC certificate can only be uploaded after TC is issued.' }
+  }
+  if (user.role === 'CB_USER' && app.cbId !== user.cbId) {
+    return { error: 'You can only upload TC certificates for your own CB.' }
+  }
+
+  const result = await uploadTcFile(applicationId, file)
+  if ('error' in result) return result
+
+  await prisma.$transaction(async (tx) => {
+    await tx.application.update({
+      where: { id: applicationId },
+      data:  { tcDocumentPath: result.path },
+    })
+    await tx.applicationEvent.create({
+      data: {
+        applicationId,
+        eventType: 'TC_CERTIFICATE_UPLOADED' satisfies EventType,
+        payload:   { path: result.path },
+        actorId:   user.appUser.id,
+      },
+    })
+  })
+
+  revalidatePath(`/applications/${applicationId}`)
+  return { url: getTcCertificatePublicUrl(result.path) }
 }
