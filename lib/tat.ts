@@ -52,6 +52,9 @@ export function getStageTat(app: AppTatInput, stage: Stage): StageTatResult {
       start = app.dgcaReviewStartedAt
       end   = app.tcIssuedDate
       break
+    case Stage.TC_ISSUED:
+      if (!app.tcIssuedDate) return { elapsed: null, isComplete: false }
+      return { elapsed: 0, isComplete: true }
     case Stage.QCI_AGREEMENT:
       start = app.qciAgreementInitiatedDate
       end   = app.qciAgreementCompletedDate

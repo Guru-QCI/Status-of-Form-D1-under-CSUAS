@@ -7,6 +7,13 @@ export type EventType =
   | 'DGCA_OBSERVATION_RECORDED'
   | 'SURVEILLANCE_SCHEDULED'
   | 'SURVEILLANCE_CLOSED'
+  | 'REVIEW_RECORDED'
+  | 'STAGE_1_UPDATED'
+  | 'STAGE_2_UPDATED'
+  | 'SOC_UPDATED'
+  | 'DGCA_REVIEW_STARTED'
+  | 'QCI_AGREEMENT_UPDATED'
+  | 'RESPONSE_RECORDED'
 
 export type AppStateInput = {
   cbId: string
@@ -83,7 +90,8 @@ export function getBlockingReason(
       return null
 
     case Stage.DGCA_REVIEW:
-      if (user.role !== 'ADMIN') return 'Only admins can advance to DGCA Review.'
+      if (user.role !== 'CB_USER' && user.role !== 'ADMIN') return 'Only CB users or admins can advance to DGCA Review.'
+      if (user.role === 'CB_USER' && user.cbId !== app.cbId) return 'You can only advance applications for your own CB.'
       if (openNcCount > 0)       return openNcMsg(openNcCount)
       if (!app.socSubmittedDate) return 'SoC submitted date not set.'
       return null
