@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  CB_USER
+  PUBLIC
+}
+
+enum Stage {
+  APPLICATION_REVIEW
+  STAGE_1
+  STAGE_2
+  TECHNICAL_REVIEW_SOC
+  DGCA_REVIEW
+  TC_ISSUED
+  QCI_AGREEMENT
+  POST_TC_SURVEILLANCE
+}
+
+enum AppStatus {
+  IN_PROGRESS
+  REJECTED
+  TC_ISSUED
+  WITHDRAWN
+}
+
+enum ReviewDecision {
+  ACCEPTED
+  REJECTED
+}
+
+enum RejectionCategory {
+  EXCEEDS_60_DAYS
+  INSUFFICIENT_DOCUMENTS
+  NO_RESPONSE_TO_NCS
+  OTHER
+}
+
+enum QciAgreementStatus {
+  NOT_STARTED
+  INITIATED
+  MANUFACTURER_SIGNED
+  COMPLETED
+}
+
+enum DocType {
+  FORM_D1
+  TECHNICAL_FILE
+  TEST_REPORT
+  CRM_DOCUMENT
+  NC_CLOSURE_EVIDENCE
+  SOC
+  TYPE_CERTIFICATE
+  QCI_MANUFACTURER_AGREEMENT_DRAFT
+  QCI_MANUFACTURER_AGREEMENT_SIGNED
+  SURVEILLANCE_REPORT
+  OTHER
+}
+
+enum ReminderKind {
+  CB_DECISION_DAY_6
+  PROCESS_1_TO_4_DAY_60
+  DGCA_REVIEW_DAY_15
+  NC_RESPONSE_OVERDUE
+  QCI_AGREEMENT_PENDING
+  QCI_AGREEMENT_OVERDUE
+  SURVEILLANCE_DUE
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model AppUser {
+  id           String   @id
+  email        String   @unique
+  fullName     String
+  role         Role
+  cbId         String?
+  cb           CB?      @relation(fields: [cbId], references: [id])
+  designation  String?
+  organisation String?
+  createdAt    DateTime @default(now())
+
+  applicationsAdded     Application[] @relation("AddedBy")
+  applicationsQciSigned Application[] @relation("QciSigner")
+}
+
+model CB {
+  id                 String        @id @default(uuid())
+  name               String        @unique
+  isNabcbAccredited  Boolean       @default(false)
+  nabcbExpiryDate    DateTime?
+  contactPersonName  String?
+  contactDesignation String?
+  contactEmail       String?
+  contactPhone       String?
+  address            String?
+  users              AppUser[]
+  applications       Application[]
+  emailWhitelist     EmailWhitelist[]
+}
+
+model Manufacturer {
+  id           String        @id @default(uuid())
+  name         String
+  contactEmail String
+  contactPhone String?
+  applications Application[]
+}
+
+model Application {
+  id                  String       @id @default(uuid())
+  formNumber          String       @unique
+  manufacturerId      String
+  manufacturer        Manufacturer @relation(fields: [manufacturerId], references: [id])
+  modelName           String
+  modelVariant        String?
+  cbId                String
+  cb                  CB           @relation(fields: [cbId], references: [id])
+  submissionDate      DateTime
+  attemptNumber       Int          @default(1)
+  parentApplicationId String?
+  parent              Application?  @relation("Resubmission", fields: [parentApplicationId], references: [id])
+  resubmissions       Application[] @relation("Resubmission")
+
+  currentStage Stage     @default(APPLICATION_REVIEW)
+  status       AppStatus @default(IN_PROGRESS)
+
+  // Process 1 — Application Review
+  reviewerName        String?
+  reviewerDesignation String?
+  reviewerOrg         String?
+  reviewDecisionDate  DateTime?
+  reviewDecision      ReviewDecision?
+  rejectionCategory   RejectionCategory?
+  rejectionReason     String?
+
+  // Process 2 — Stage 1
+  stage1ScheduleFrom DateTime?
+  stage1ScheduleTo   DateTime?
+  stage1ClosureDate  DateTime?
+
+  // Process 3 — Stage 2
+  stage2ScheduleFrom DateTime?
+  stage2ScheduleTo   DateTime?
+  stage2ClosureDate  DateTime?
+
+  // Process 4 — SoC
+  socReviewDate    DateTime?
+  socSubmittedDate DateTime?
+
+  // Process 5 — DGCA
+  dgcaReviewStartedAt DateTime?
+  tcIssuedDate        DateTime?
+
+  // Process 6 — QCI–Manufacturer Agreement
+  qciAgreementStatus        QciAgreementStatus @default(NOT_STARTED)
+  qciAgreementInitiatedDate DateTime?
+  qciAgreementDraftSentDate DateTime?
+  manufacturerSignedDate    DateTime?
+  qciSignedDate             DateTime?
+  qciSignedById             String?
+  qciSignedBy               AppUser?  @relation("QciSigner", fields: [qciSignedById], references: [id])
+  qciAgreementCompletedDate DateTime?
+
+  addedById String
+  addedBy   AppUser  @relation("AddedBy", fields: [addedById], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  documents     Document[]
+  evaluators    ApplicationEvaluator[]
+  ncs           NonConformity[]
+  observations  DgcaObservation[]
+  surveillances SurveillanceAudit[]
+  reminders     Reminder[]
+  events        ApplicationEvent[]
+
+  @@index([cbId])
+  @@index([manufacturerId])
+  @@index([currentStage])
+  @@index([submissionDate])
+  @@index([tcIssuedDate])
+}
+
+model Document {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  type          DocType
+  fileName      String
+  storagePath   String
+  uploadedById  String
+  uploadedAt    DateTime    @default(now())
+}
+
+model ApplicationEvaluator {
+  id                String      @id @default(uuid())
+  applicationId     String
+  application       Application @relation(fields: [applicationId], references: [id])
+  stage             Stage
+  evaluatorName     String
+  competencyClauses String[]
+}
+
+model NonConformity {
+  id                       String      @id @default(uuid())
+  applicationId            String
+  application              Application @relation(fields: [applicationId], references: [id])
+  stage                    Stage
+  iteration                Int
+  raisedDate               DateTime
+  description              String
+  crmStoragePath           String?
+  manufacturerResponseDate DateTime?
+  closureEvidencePath      String?
+  closedDate               DateTime?
+  createdAt                DateTime    @default(now())
+}
+
+model DgcaObservation {
+  id             String      @id @default(uuid())
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id])
+  iteration      Int
+  raisedDate     DateTime
+  description    String
+  cbResponseDate DateTime?
+  resolvedDate   DateTime?
+}
+
+model SurveillanceAudit {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  yearOfAudit   Int
+  plannedFrom   DateTime
+  plannedTo     DateTime
+  actualFrom    DateTime?
+  actualTo      DateTime?
+  outcome       String?
+  reportPath    String?
+}
+
+model ApplicationEvent {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  eventType     String
+  payload       Json
+  actorId       String
+  occurredAt    DateTime    @default(now())
+}
+
+model Reminder {
+  id            String       @id @default(uuid())
+  applicationId String
+  application   Application  @relation(fields: [applicationId], references: [id])
+  kind          ReminderKind
+  dueAt         DateTime
+  sentAt        DateTime?
+  recipients    String[]
+  message       String
+
+  @@unique([applicationId, kind, dueAt])
+}
+
+model EmailWhitelist {
+  email   String   @id
+  role    Role
+  cbId    String?
+  cb      CB?      @relation(fields: [cbId], references: [id])
+  addedAt DateTime @default(now())
+}
